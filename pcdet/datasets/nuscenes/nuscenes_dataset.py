@@ -17,6 +17,8 @@ class NuScenesDataset(DatasetTemplate):
             dataset_cfg=dataset_cfg, class_names=class_names, training=training, root_path=root_path, logger=logger
         )
         self.infos = []
+        self.info_root_path = Path('/mnt/ws-frb/users/yiliuhh/mmpretraining/dataset/nuscenes')
+        self.data_root_path = Path('/mnt/ws-frb/users/jingyuso/dataset/nuScenes')
         self.include_nuscenes_data(self.mode)
         if self.training and self.dataset_cfg.get('BALANCED_RESAMPLING', False):
             self.infos = self.balanced_infos_resampling(self.infos)
@@ -26,7 +28,7 @@ class NuScenesDataset(DatasetTemplate):
         nuscenes_infos = []
 
         for info_path in self.dataset_cfg.INFO_PATH[mode]:
-            info_path = self.root_path / info_path
+            info_path = self.info_root_path /info_path
             if not info_path.exists():
                 continue
             with open(info_path, 'rb') as f:
@@ -78,7 +80,7 @@ class NuScenesDataset(DatasetTemplate):
             mask = ~((np.abs(points[:, 0]) < center_radius) & (np.abs(points[:, 1]) < center_radius))
             return points[mask]
 
-        lidar_path = self.root_path / sweep_info['lidar_path']
+        lidar_path = self.data_root_path / sweep_info['lidar_path']
         points_sweep = np.fromfile(str(lidar_path), dtype=np.float32, count=-1).reshape([-1, 5])[:, :4]
         points_sweep = remove_ego_points(points_sweep).T
         if sweep_info['transform_matrix'] is not None:
@@ -91,7 +93,7 @@ class NuScenesDataset(DatasetTemplate):
 
     def get_lidar_with_sweeps(self, index, max_sweeps=1):
         info = self.infos[index]
-        lidar_path = self.root_path / info['lidar_path']
+        lidar_path = self.data_root_path / info['lidar_path']
         points = np.fromfile(str(lidar_path), dtype=np.float32, count=-1).reshape([-1, 5])[:, :4]
 
         sweep_points_list = [points]
@@ -154,7 +156,7 @@ class NuScenesDataset(DatasetTemplate):
         import json
         from nuscenes.nuscenes import NuScenes
         from . import nuscenes_utils
-        nusc = NuScenes(version=self.dataset_cfg.VERSION, dataroot=str(self.root_path), verbose=True)
+        nusc = NuScenes(version=self.dataset_cfg.VERSION, dataroot=str(self.data_root_path), verbose=True)
         nusc_annos = nuscenes_utils.transform_det_annos_to_nusc_annos(det_annos, nusc)
         nusc_annos['meta'] = {
             'use_camera': False,
@@ -209,8 +211,8 @@ class NuScenesDataset(DatasetTemplate):
     def create_groundtruth_database(self, used_classes=None, max_sweeps=10):
         import torch
 
-        database_save_path = self.root_path / f'gt_database_{max_sweeps}sweeps_withvelo'
-        db_info_save_path = self.root_path / f'nuscenes_dbinfos_{max_sweeps}sweeps_withvelo.pkl'
+        database_save_path = self.info_root_path / f'gt_database_{max_sweeps}sweeps_withvelo'
+        db_info_save_path = self.info_root_path / f'nuscenes_dbinfos_{max_sweeps}sweeps_withvelo.pkl'
 
         database_save_path.mkdir(parents=True, exist_ok=True)
         all_db_infos = {}
@@ -237,7 +239,7 @@ class NuScenesDataset(DatasetTemplate):
                     gt_points.tofile(f)
 
                 if (used_classes is None) or gt_names[i] in used_classes:
-                    db_path = str(filepath.relative_to(self.root_path))  # gt_database/xxxxx.bin
+                    db_path = str(filepath.relative_to(self.info_root_path))  # gt_database/xxxxx.bin
                     db_info = {'name': gt_names[i], 'path': db_path, 'image_idx': sample_idx, 'gt_idx': i,
                                'box3d_lidar': gt_boxes[i], 'num_points_in_gt': gt_points.shape[0]}
                     if gt_names[i] in all_db_infos:
@@ -255,8 +257,9 @@ def create_nuscenes_info(version, data_path, save_path, max_sweeps=10):
     from nuscenes.nuscenes import NuScenes
     from nuscenes.utils import splits
     from . import nuscenes_utils
-    data_path = data_path / version
-    save_path = save_path / version
+    # data_path = data_path / version
+    data_path = data_path 
+    save_path = save_path 
 
     assert version in ['v1.0-trainval', 'v1.0-test', 'v1.0-mini']
     if version == 'v1.0-trainval':
@@ -310,20 +313,27 @@ if __name__ == '__main__':
     parser.add_argument('--version', type=str, default='v1.0-trainval', help='')
     args = parser.parse_args()
 
+    data_load_path = Path('/mnt/ws-frb/users/jingyuso/dataset/nuScenes')
+    data_save_path = Path('/mnt/ws-frb/users/yiliuhh/mmpretraining/dataset/nuscenes')
+    data_root_path = Path('/mnt/ws-frb/users/jingyuso/dataset/nuScenes')
+
     if args.func == 'create_nuscenes_infos':
         dataset_cfg = EasyDict(yaml.safe_load(open(args.cfg_file)))
         ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
         dataset_cfg.VERSION = args.version
         create_nuscenes_info(
             version=dataset_cfg.VERSION,
-            data_path=ROOT_DIR / 'data' / 'nuscenes',
-            save_path=ROOT_DIR / 'data' / 'nuscenes',
+            #data_path=ROOT_DIR / 'data' / 'nuscenes',
+            data_path=data_load_path,
+            save_path=data_save_path,
+            #save_path=ROOT_DIR / 'data' / 'nuscenes',
             max_sweeps=dataset_cfg.MAX_SWEEPS,
         )
 
         nuscenes_dataset = NuScenesDataset(
             dataset_cfg=dataset_cfg, class_names=None,
-            root_path=ROOT_DIR / 'data' / 'nuscenes',
+            #root_path=ROOT_DIR / 'data' / 'nuscenes',
+            root_path=data_root_path,
             logger=common_utils.create_logger(), training=True
         )
         nuscenes_dataset.create_groundtruth_database(max_sweeps=dataset_cfg.MAX_SWEEPS)
